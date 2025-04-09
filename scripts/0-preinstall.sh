@@ -188,7 +188,7 @@ if [[  $TOTAL_MEM -lt 8000000 ]]; then
     # Put swap into the actual system, not into RAM disk, otherwise there is no point in it, it'll cache RAM into RAM. So, /mnt/ everything.
     mkdir -p /mnt/opt/swap # make a dir that we can apply NOCOW to to make it btrfs-friendly.
     chattr +C /mnt/opt/swap # apply NOCOW, btrfs needs that.
-    dd if=/dev/zero of=/mnt/opt/swap/swapfile bs=1M count=2048 status=progress
+    dd if=/dev/zero of=/mnt/opt/swap/swapfile bs=1M count=5120 status=progress
     chmod 600 /mnt/opt/swap/swapfile # set permissions.
     chown root /mnt/opt/swap/swapfile
     mkswap /mnt/opt/swap/swapfile
