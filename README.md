@@ -53,3 +53,8 @@ chmod +x ArchEnhancedINS
 After the installation >
 Eject USB >
 Reboot
+<div align="center">
+ 
+![HYPRLAND WITH DOT INSTALLER SOON!](https://github.com/user-attachments/assets/babd5d02-42f4-4b90-9bc2-dc88c4926c7c)
+</div>
+
