@@ -40,8 +40,10 @@
 >Proceed ↷
 
 
+<br>
+<br>
 
-# How To Install
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Special+Gothic+Expanded+One&pause=1000&color=B37B90&width=445&lines=HOW+TO+INSTALL)](https://git.io/typing-svg)
 
 ArchAutomativeInstaller
 ```bash
@@ -53,6 +55,7 @@ chmod +x ArchEnhancedINS
 After the installation >
 Eject USB >
 Reboot
+
 <div align="center">
  
 ![HYPRLAND WITH DOT INSTALLER SOON!](https://github.com/user-attachments/assets/babd5d02-42f4-4b90-9bc2-dc88c4926c7c)
