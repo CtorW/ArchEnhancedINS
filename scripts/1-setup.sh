@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail # Crucial for error handling
+set -euo pipefail
 
-log_file="/var/log/arch_setup.log" # Dedicated log for this script
+log_file="/var/log/arch_setup.log"
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$log_file"
 }
@@ -11,6 +11,7 @@ error_exit() {
     exit 1
 }
 check_command() {
+    log_message "Executing: $*"
     "$@"
     local status=$?
     if [ $status -ne 0 ]; then
@@ -19,7 +20,7 @@ check_command() {
 }
 
 CONFIGS_DIR="$HOME/ArchEnhancedINS/configs"
-SCRIPTS_DIR="$HOME/ArchEnhancedINS/scripts" # Needed for copying user scripts later
+SCRIPTS_DIR="$HOME/ArchEnhancedINS/scripts"
 PKG_FILES_DIR="$HOME/ArchEnhancedINS/pkg-files"
 
 echo -ne "
@@ -35,9 +36,10 @@ echo -ne "
 .AMA.   .AMMA..JMML.   YMbmd'.JMML  JMML..JMMmmmmMMM .JMML  JMML..JMML  JMML.`Moo9^Yo..JMML  JMML.YMbmd'   `Mbmmd'  `Wbmd"MML..JMML..JML.    YM P"Ybmmd"  
                                                                                                                                                           
                                                                                                                                                           
+
 -------------------------------------------------------------------------
-                    Automated Arch Linux Installer
-                      SCRIPTHOME: ArchEnhancedINS
+                  Automated Arch Linux Installer
+                   SCRIPTHOME: ArchEnhancedINS
 -------------------------------------------------------------------------
 "
 log_message "Sourcing configuration from $CONFIGS_DIR/setup.conf"
@@ -55,34 +57,27 @@ if [[ -z "${DESKTOP_ENV}" ]]; then error_exit "DESKTOP_ENV variable not set in s
 if [[ -z "${INSTALL_TYPE}" ]]; then error_exit "INSTALL_TYPE variable not set in setup.conf!"; fi
 if [[ -z "${FS}" ]]; then error_exit "FS variable not set in setup.conf!"; fi
 
-
 echo -ne "
 -------------------------------------------------------------------------
-                    Network Setup
+                  Network Setup
 -------------------------------------------------------------------------
 "
-log_message "Installing NetworkManager and dhclient..."
-check_command pacman -S --noconfirm --needed networkmanager dhclient
-
 log_message "Enabling and starting NetworkManager service..."
 check_command systemctl enable --now NetworkManager.service
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Setting up mirrors for optimal download
+                  Setting up mirrors for optimal download
 -------------------------------------------------------------------------
 "
-log_message "Installing pacman-contrib, curl, reflector, rsync, grub, git..."
-check_command pacman -S --noconfirm --needed pacman-contrib curl reflector rsync grub arch-install-scripts git
-
 log_message "Backing up current mirrorlist inside chroot..."
 check_command cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
 log_message "Configuring makepkg.conf for optimal compilation and compression..."
-nc=$(grep -c ^processor /proc/cpuinfo || echo 1) 
+nc=$(grep -c ^processor /proc/cpuinfo || echo 1)
 echo -ne "
 -------------------------------------------------------------------------
-                    You have ${nc} cores. Adjusting makeflags and compression.
+                  You have ${nc} cores. Adjusting makeflags and compression.
 -------------------------------------------------------------------------
 "
 
@@ -90,7 +85,7 @@ log_message "Setting MAKEFLAGS=\"-j$nc\" in /etc/makepkg.conf"
 check_command sed -i "s/#MAKEFLAGS=\"-j2\"/MAKEFLAGS=\"-j$nc\"/g" /etc/makepkg.conf
 
 TOTAL_MEM_KB=$(grep -i 'memtotal' /proc/meminfo | awk '{print $2}')
-if [[ "$TOTAL_MEM_KB" -gt 8000000 ]]; then # 8GB in KB
+if [[ "$TOTAL_MEM_KB" -gt 8000000 ]]; then
     log_message "Total memory ($((TOTAL_MEM_KB / 1024))MB) > 8GB. Setting XZ compression to use all cores."
     check_command sed -i "s/COMPRESSXZ=(xz -c -z -)/COMPRESSXZ=(xz -c -T $nc -z -)/g" /etc/makepkg.conf
 else
@@ -99,7 +94,7 @@ fi
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Setup Language to US and set locale
+                  Setup Language to US and set locale
 -------------------------------------------------------------------------
 "
 log_message "Enabling en_US.UTF-8 locale..."
@@ -138,42 +133,83 @@ check_command pacman -Sy --noconfirm --needed
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Installing Base System Packages
+                  Installing Base System Packages & Desktop Environment
 -------------------------------------------------------------------------
 "
-if [[ ! "$DESKTOP_ENV" == server ]]; then
-    log_message "Starting package installation based on INSTALL_TYPE: ${INSTALL_TYPE}..."
-    if [[ ! -f "$PKG_FILES_DIR/pacman-pkgs.txt" ]]; then
-        error_exit "Package list file '$PKG_FILES_DIR/pacman-pkgs.txt' not found!"
-    fi
+ALL_PACKAGES_TO_INSTALL=()
 
-    # Read packages line by line, handling INSTALL_TYPE
-    # Changed `sudo pacman` to `pacman` as we are already root in chroot
-    sed -n '/^'$INSTALL_TYPE'/,$p' "$PKG_FILES_DIR/pacman-pkgs.txt" | \
+PACMAN_PKGS_FILE="$PKG_FILES_DIR/pacman-pkgs.txt"
+if [[ -f "$PACMAN_PKGS_FILE" ]]; then
+    log_message "Reading base packages from: $PACMAN_PKGS_FILE"
     while IFS= read -r line || [[ -n "$line" ]]; do
-        line=$(echo "$line" | xargs) # Trim whitespace
-        if [[ -z "$line" || "$line" =~ ^# ]]; then
-            continue # Skip empty lines and comments
-        fi
-        if [[ "$line" == '--END OF MINIMAL INSTALL--' && "$INSTALL_TYPE" == "MINIMAL" ]]; then
-            log_message "Reached end of MINIMAL installation type. Stopping package install loop."
-            break # Stop reading further for MINIMAL install
-        fi
-        if [[ "$line" == '--END OF MINIMAL INSTALL--' && "$INSTALL_TYPE" == "FULL" ]]; then
-            log_message "Skipping '--END OF MINIMAL INSTALL--' for FULL installation type."
-            continue # Continue for FULL install
-        fi
-        
-        log_message "INSTALLING: ${line}"
-        check_command pacman -S --noconfirm --needed ${line}
-    done
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [[ -z "$line" ]]; then continue; fi
+        ALL_PACKAGES_TO_INSTALL+=("$line")
+    done < "$PACMAN_PKGS_FILE"
+    log_message "Added ${#ALL_PACKAGES_TO_INSTALL[@]} base packages from pacman-pkgs.txt."
 else
-    log_message "DESKTOP_ENV is 'server'. Skipping additional package installation from pacman-pkgs.txt."
+    error_exit "Base Pacman package list '$PACMAN_PKGS_FILE' not found! This file is essential."
+fi
+
+if [[ -z "${DESKTOP_ENV+x}" ]]; then
+    error_exit "DESKTOP_ENV is not set in setup.conf. Cannot determine desktop environment packages."
+fi
+
+DE_PKG_FILE="$PKG_FILES_DIR/$DESKTOP_ENV.txt"
+if [[ ! -f "$DE_PKG_FILE" ]]; then
+    if [[ "$DESKTOP_ENV" == "server" ]]; then
+        log_message "DESKTOP_ENV is 'server'. No additional DE-specific packages will be installed (assuming server.txt is empty or doesn't exist)."
+    else
+        error_exit "Desktop Environment package list '$DE_PKG_FILE' not found for '$DESKTOP_ENV'. Please create it."
+    fi
+else
+    log_message "Reading packages for selected desktop environment ($DESKTOP_ENV) from: $DE_PKG_FILE"
+
+    declare -a MINIMAL_DE_PACKAGES=()
+    declare -a FULL_DE_PACKAGES=()
+    SEPARATOR_FOUND=false
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [[ -z "$line" ]]; then continue; fi
+
+        if [[ "$line" == "--END OF MINIMAL INSTALL--" ]]; then
+            SEPARATOR_FOUND=true
+            log_message "Separator '--END OF MINIMAL INSTALL--' found in $DE_PKG_FILE."
+            continue
+        fi
+
+        if [[ "$SEPARATOR_FOUND" == false ]]; then
+            MINIMAL_DE_PACKAGES+=("$line")
+        else
+            FULL_DE_PACKAGES+=("$line")
+        fi
+    done < "$DE_PKG_FILE"
+
+    ALL_PACKAGES_TO_INSTALL+=("${MINIMAL_DE_PACKAGES[@]}")
+    log_message "Added ${#MINIMAL_DE_PACKAGES[@]} minimal packages for $DESKTOP_ENV."
+
+    if [[ "${INSTALL_TYPE}" == "FULL" ]]; then
+        log_message "INSTALL_TYPE is FULL. Adding ${#FULL_DE_PACKAGES[@]} additional packages for $DESKTOP_ENV."
+        ALL_PACKAGES_TO_INSTALL+=("${FULL_DE_PACKAGES[@]}")
+    elif [[ "${INSTALL_TYPE}" == "MINIMAL" ]]; then
+        log_message "INSTALL_TYPE is MINIMAL. Skipping additional full packages for $DESKTOP_ENV."
+    else
+        log_message "WARNING: Unknown INSTALL_TYPE '${INSTALL_TYPE}'. Defaulting to MINIMAL for DE-specific packages."
+    fi
+fi
+
+if [[ ${#ALL_PACKAGES_TO_INSTALL[@]} -eq 0 ]]; then
+    log_message "No packages collected for installation. This might indicate an error or empty package lists."
+else
+    log_message "Initiating Pacman installation for a total of ${#ALL_PACKAGES_TO_INSTALL[@]} unique packages."
+    check_command pacman -S --noconfirm --needed "${ALL_PACKAGES_TO_INSTALL[@]}"
+    log_message "Pacman installation completed successfully for all collected packages."
 fi
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Installing Microcode
+                  Installing Microcode
 -------------------------------------------------------------------------
 "
 log_message "Detecting CPU type and installing microcode..."
@@ -190,20 +226,20 @@ fi
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Installing Graphics Drivers
+                  Installing Graphics Drivers
 -------------------------------------------------------------------------
 "
 log_message "Detecting GPU type and installing drivers..."
 gpu_type=$(lspci)
 if grep -qE "NVIDIA|GeForce" <<< "${gpu_type}"; then
     log_message "NVIDIA GPU detected. Installing nvidia-dkms and relevant packages."
-    check_command pacman -S --noconfirm --needed nvidia-dkms nvidia-utils lib32-nvidia-utils opencl-nvidia # Recommended for flexibility
+    check_command pacman -S --noconfirm --needed nvidia-dkms nvidia-utils lib32-nvidia-utils opencl-nvidia
 elif lspci | grep -q 'VGA' | grep -qE "Radeon|AMD"; then
     log_message "AMD Radeon GPU detected. Installing AMDGPU drivers (mesa, vulkan-radeon)."
-    check_command pacman -S --noconfirm --needed mesa vulkan-radeon lib32-mesa lib32-vulkan-radeon # Modern AMD drivers
+    check_command pacman -S --noconfirm --needed mesa vulkan-radeon lib32-mesa lib32-vulkan-radeon
 elif grep -qE "Integrated Graphics Controller|Intel Corporation UHD" <<< "${gpu_type}"; then
     log_message "Intel Integrated GPU detected. Installing Intel graphics drivers (mesa, vulkan-intel)."
-    check_command pacman -S --noconfirm --needed mesa vulkan-intel lib32-mesa lib32-vulkan-intel intel-media-driver # Intel drivers
+    check_command pacman -S --noconfirm --needed mesa vulkan-intel lib32-mesa lib32-vulkan-intel intel-media-driver
 else
     log_message "No specific GPU type detected or supported by script. Skipping GPU driver installation."
     log_message "Consider manually installing drivers if graphics environment is desired."
@@ -211,15 +247,15 @@ fi
 
 echo -ne "
 -------------------------------------------------------------------------
-                    Adding User
+                  Adding User
 -------------------------------------------------------------------------
 "
 if [ "$(whoami)" = "root" ]; then
     log_message "Adding group 'libvirt'..."
-    check_command groupadd libvirt || log_message "libvirt group already exists, skipping creation." # Handle existing group
+    groupadd libvirt 2>/dev/null || log_message "libvirt group already exists or could not be created, skipping creation."
 
     log_message "Creating user '$USERNAME' and adding to wheel and libvirt groups."
-    
+
     check_command useradd -m -G wheel,libvirt -s /bin/bash "$USERNAME"
 
     log_message "Setting password for user '$USERNAME'..."
@@ -227,8 +263,8 @@ if [ "$(whoami)" = "root" ]; then
     log_message "User '$USERNAME' and password set."
 
     log_message "Copying ArchEnhancedINS installer files to user's home directory..."
-    check_command cp -R "$SCRIPTS_DIR/.." "/home/$USERNAME/ArchEnhancedINS" # Copy the parent directory (ArchEnhancedINS)
-    check_command chown -R "$USERNAME:" "/home/$USERNAME/ArchEnhancedINS"
+    check_command cp -R "$INSTALLER_ROOT" "/home/$USERNAME/ArchEnhancedINS"
+    check_command chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/ArchEnhancedINS"
     log_message "ArchEnhancedINS copied to /home/$USERNAME/ArchEnhancedINS"
 
     log_message "Setting hostname to '${NAME_OF_MACHINE}'..."
@@ -242,8 +278,11 @@ fi
 if [[ "${FS}" == "luks" ]]; then
     log_message "LUKS detected. Configuring /etc/mkinitcpio.conf for encryption hook."
     log_message "Adding 'encrypt' hook before 'filesystems' in mkinitcpio.conf..."
-    check_command sed -i '0,/filesystems/s/filesystems/encrypt filesystems/' /etc/mkinitcpio.conf
-    
+    check_command sed -i 's/^HOOKS=\(.*\)\sfilesystems\s\(.*\)/HOOKS=\1 keyboard keymap encrypt filesystems \2/' /etc/mkinitcpio.conf
+    if ! grep -q "encrypt" /etc/mkinitcpio.conf; then
+        check_command sed -i 's/\(HOOKS=".*\)filesystems/\1keyboard keymap encrypt filesystems/' /etc/mkinitcpio.conf
+    fi
+
     log_message "Rebuilding mkinitcpio image with 'encrypt' hook and linux kernel."
     check_command mkinitcpio -p linux
 else
@@ -252,6 +291,6 @@ fi
 
 echo -ne "
 -------------------------------------------------------------------------
-                    SYSTEM READY FOR 2-user.sh
+                  SYSTEM READY FOR 2-user.sh
 -------------------------------------------------------------------------
 "
