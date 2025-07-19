@@ -1,3 +1,4 @@
+# Packages for minimal desktop environment
 mesa
 xorg
 xorg-server
@@ -18,6 +19,7 @@ noto-fonts-emoji
 usbutils
 xdg-user-dirs
 --END OF MINIMAL INSTALL--
+# Additional packages for full desktop environment
 alsa-plugins
 alsa-utils
 autoconf
